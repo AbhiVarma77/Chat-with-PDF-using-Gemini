@@ -11,7 +11,6 @@ from langchain.prompts import PromptTemplate
 from dotenv import load_dotenv
 
 load_dotenv()
-os.getenv("GOOGLE_API_KEY")
 genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 
 def get_pdf_text(pdf_docs):
@@ -28,50 +27,35 @@ def get_text_chunks(text):
     return chunks
 
 def get_vector_store(text_chunks):
-    embeddings = GoogleGenerativeAIEmbeddings(model = "models/embedding-001")
+    embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
     vector_store = FAISS.from_texts(text_chunks, embedding=embeddings)
-
-    # Ensure the directory exists
-    index_dir = "faiss_index"
-    os.makedirs(index_dir, exist_ok=True)
     
-    # Save the index to a file within the directory
-    index_file_path = os.path.join(index_dir, "index.faiss")
-    vector_store.save_local(index_file_path)
+    # Ensure the directory exists
+    if not os.path.exists("faiss_index"):
+        os.makedirs("faiss_index")
+    
+    vector_store.save_local("faiss_index/index")
 
 def get_conversational_chain():
     prompt_template = """
-    Answer the question as detailed as possible from the provided context, make sure to provide all the details. If the answer is not in
-    the provided context just say, "answer is not available in the context", don't provide the wrong answer.
-
-    Context:\n {context}\n
-    Question: \n{question}\n
-
+    Answer the question as detailed as possible from the provided context. If the answer is not in
+    the provided context, just say, "The answer is not available in the context." Don't provide a wrong answer.\n\n
+    Context:\n{context}\n
+    Question:\n{question}\n
     Answer:
     """
 
     model = ChatGoogleGenerativeAI(model="gemini-pro", temperature=0.3)
-
     prompt = PromptTemplate(template=prompt_template, input_variables=["context", "question"])
     chain = load_qa_chain(model, chain_type="stuff", prompt=prompt)
-
     return chain
 
 def user_input(user_question):
-    embeddings = GoogleGenerativeAIEmbeddings(model = "models/embedding-001")
-    
-    index_file_path = os.path.join("faiss_index", "index.faiss")
-    new_db = FAISS.load_local(index_file_path, embeddings, allow_dangerous_deserialization=True)
+    embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
+    new_db = FAISS.load_local("faiss_index/index", embeddings, allow_dangerous_deserialization=True)
     docs = new_db.similarity_search(user_question)
-
     chain = get_conversational_chain()
-
-    response = chain(
-        {"input_documents": docs, "question": user_question},
-        return_only_outputs=True
-    )
-
-    print(response)
+    response = chain({"input_documents": docs, "question": user_question}, return_only_outputs=True)
     st.write("Reply: ", response["output_text"])
 
 def main():
